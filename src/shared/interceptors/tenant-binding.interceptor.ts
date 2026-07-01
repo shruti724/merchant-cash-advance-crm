@@ -14,6 +14,11 @@ export class TenantBindingInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest();
+    // Passport attaches the validated JwtStrategy result as `request.user`;
+    // alias it to `request.actor` for semantic clarity in the rest of the app.
+    if (request.user && !request.actor) {
+      request.actor = request.user;
+    }
     if (request.actor) {
       this.tenantContext.setTenantId(request.actor.tenantId);
       this.tenantContext.setActor(request.actor);
