@@ -3,7 +3,7 @@
  * can be demonstrated immediately after `docker compose up`.
  */
 import { PrismaClient, RoleName } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
