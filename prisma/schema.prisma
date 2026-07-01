@@ -1,0 +1,250 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Prisma schema — Portfolio CRM
+//
+// Design notes:
+// - Multi-tenancy: row-level isolation via `tenantId` on every tenant-scoped
+//   table, enforced at the application layer through a Prisma client
+//   extension (see src/shared/infrastructure/prisma) that injects the
+//   tenant filter on every query automatically (defense in depth alongside
+//   guards/interceptors).
+// - RBAC: Role is a first-class tenant-scoped entity with a JSON permission
+//   set, assigned to users via a join table (many-to-many) so a user can
+//   hold more than one role.
+// - Workflow: Application status transitions are appended to
+//   ApplicationStatusHistory (event-sourced audit trail) rather than only
+//   overwritten in place, so the full lifecycle is reconstructable.
+// - AuditLog is populated by domain-event listeners (Observer pattern),
+//   never written directly by use cases — keeps cross-cutting concerns out
+//   of business logic.
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Platform ───────────────────────────────
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]
+  roles        Role[]
+  leads        Lead[]
+  applications Application[]
+  auditLogs    AuditLog[]
+
+  @@map("tenants")
+}
+
+// ───────────────────────────────── IAM ──────────────────────────────────
+
+enum RoleName {
+  TENANT_ADMIN
+  ISO
+  AGENT
+  UNDERWRITER
+  OPERATIONS
+  ACCOUNTANT
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        RoleName
+  // Fine-grained permission strings, e.g. "lead:create", "application:decide"
+  permissions String[]
+  createdAt   DateTime @default(now())
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  UserRole[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roles            UserRole[]
+  ownedLeads       Lead[]            @relation("LeadOwner")
+  assignedReviews  Application[]     @relation("ApplicationReviewer")
+  refreshTokens    RefreshToken[]
+  notes            Note[]
+  statusChanges    ApplicationStatusHistory[]
+
+  // A user's email is unique per tenant, not globally — standard SaaS
+  // multi-tenant pattern (the same person could exist in two tenants).
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────── Domain ─────────────────────────────────
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  DISQUALIFIED
+}
+
+model Lead {
+  id           String     @id @default(uuid())
+  tenantId     String
+  ownerId      String
+  businessName String
+  contactName  String
+  email        String
+  phone        String
+  status       LeadStatus @default(NEW)
+  source       String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner       User          @relation("LeadOwner", fields: [ownerId], references: [id])
+  application Application?
+  notes       Note[]
+
+  @@index([tenantId, status])
+  @@map("leads")
+}
+
+enum ApplicationStatus {
+  DRAFT
+  DOCUMENTS_PENDING
+  UNDER_REVIEW
+  APPROVED
+  DECLINED
+  CANCELLED
+}
+
+model Application {
+  id           String            @id @default(uuid())
+  tenantId     String
+  leadId       String            @unique
+  reviewerId   String?
+  status       ApplicationStatus @default(DRAFT)
+  requestedAmount Decimal        @db.Decimal(14, 2)
+  currency     String            @default("USD")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead           Lead                       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewer       User?                      @relation("ApplicationReviewer", fields: [reviewerId], references: [id])
+  documents      Document[]
+  statusHistory  ApplicationStatusHistory[]
+
+  @@index([tenantId, status])
+  @@map("applications")
+}
+
+model ApplicationStatusHistory {
+  id            String            @id @default(uuid())
+  applicationId String
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  reason        String?
+  changedById   String
+  changedAt     DateTime          @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  changedBy   User        @relation(fields: [changedById], references: [id])
+
+  @@map("application_status_history")
+}
+
+enum DocumentType {
+  BANK_STATEMENT
+  ID_VERIFICATION
+  BUSINESS_LICENSE
+  OTHER
+}
+
+model Document {
+  id            String       @id @default(uuid())
+  applicationId String
+  type          DocumentType
+  fileName      String
+  storageKey    String
+  uploadedAt    DateTime     @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  leadId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@map("notes")
+}
+
+// ────────────────────────────── Cross-cutting ────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  actorId    String?
+  eventName  String
+  entityType String
+  entityId   String
+  payload    Json
+  occurredAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}
