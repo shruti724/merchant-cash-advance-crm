@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mca_user
+      POSTGRES_PASSWORD: mca_password
+      POSTGRES_DB: mca_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mca_user -d mca_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://mca_user:mca_password@postgres:5432/mca_crm?schema=public
+      JWT_ACCESS_SECRET: change-me-access-secret-please
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: change-me-refresh-secret-please
+      JWT_REFRESH_EXPIRES_IN: 7d
+    ports:
+      - "3000:3000"
+    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+
+volumes:
+  pgdata:

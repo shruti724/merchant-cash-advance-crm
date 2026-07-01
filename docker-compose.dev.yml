@@ -1,0 +1,18 @@
+# Local development override: run only Postgres in Docker, and the API
+# with hot-reload on the host via `npm run start:dev`.
+#   docker compose -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mca_user
+      POSTGRES_PASSWORD: mca_password
+      POSTGRES_DB: mca_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+
+volumes:
+  pgdata_dev:
