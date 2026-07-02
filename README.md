@@ -1,97 +1,253 @@
-# MCA Portfolio CRM
+# Merchant Cash Advance CRM
 
-A production-style, multi-tenant SaaS CRM — full stack — built to
-demonstrate backend and frontend engineering practice: **Clean
-Architecture**, **Domain-Driven Design**, **RBAC**, **row-level
-multi-tenancy**, and an **event-driven workflow engine** on the backend,
-with a thin, typed **Next.js** client on the frontend.
+> A production-inspired, multi-tenant CRM platform built with **NestJS**, **Domain-Driven Design (DDD)**, **Clean Architecture**, **RBAC**, and **event-driven architecture**.
 
-```
-mca-portfolio-crm/
-├── backend/    NestJS + Prisma + PostgreSQL API — see backend/README.md
-├── frontend/   Next.js 14 (App Router) client   — see frontend/README.md
-└── docker-compose.yml   one-command full-stack run
-```
+This project demonstrates how I'd architect a production-grade SaaS backend for the Merchant Cash Advance (MCA) domain. It focuses on maintainability, scalability, and separation of concerns rather than reproducing proprietary business rules.
 
-> This is a simplified, portfolio edition of a real multi-tenant MCA
-> (Merchant Cash Advance) origination platform. The proprietary
-> underwriting/commission/syndication business logic has been removed and
-> replaced with a generic **Lead → Application** workflow that showcases
-> the same architectural patterns without exposing business IP. See
-> [`backend/docs/ARCHITECTURE.md`](backend/docs/ARCHITECTURE.md#what-was-intentionally-left-out-vs-the-original-mca-platform)
-> for exactly what was excluded and why.
+The original commercial implementation contains underwriting, commission, syndication, and funding logic that cannot be shared publicly. This repository replaces those rules with a generic **Lead → Application** workflow while preserving the same architectural approach.
 
 ---
 
-## Quick start (Docker — full stack, recommended)
+## Features
+
+- Multi-tenant SaaS architecture
+- Role-Based Access Control (RBAC)
+- Lead & Application lifecycle management
+- Event-driven workflow engine
+- Audit logging
+- REST API with Swagger
+- PostgreSQL + Prisma
+- JWT Authentication
+- Dockerized development
+- Unit & End-to-End tests
+
+---
+
+## Tech Stack
+
+### Backend
+
+- NestJS
+- TypeScript
+- PostgreSQL
+- Prisma ORM
+- JWT Authentication
+- Swagger
+- Docker
+
+### Frontend
+
+- Next.js 14
+- React
+- TypeScript
+- Tailwind CSS
+
+### Engineering Practices
+
+- Clean Architecture
+- Domain-Driven Design (DDD)
+- Repository Pattern
+- Dependency Injection
+- SOLID Principles
+- Strategy Pattern
+- Domain Events
+- Multi-Tenant Architecture
+
+---
+
+## Architecture
+
+```
+Frontend (Next.js)
+        │
+        ▼
+NestJS REST API
+        │
+        ▼
+Application Layer
+        │
+        ▼
+Domain Layer
+        │
+        ▼
+Infrastructure
+        │
+ ┌──────┼──────────┐
+ ▼      ▼          ▼
+PostgreSQL     Prisma     Event Bus
+```
+
+The project follows **Clean Architecture**, ensuring business rules remain independent of frameworks and infrastructure.
+
+---
+
+## Why This Project Exists
+
+Rather than building another CRUD application, I wanted to demonstrate backend engineering practices used in production systems:
+
+- Multi-tenant data isolation
+- Modular architecture
+- Event-driven workflows
+- Rich domain model
+- Testable business logic
+- Clear separation between domain and infrastructure
+
+The business workflow has been simplified, but the architectural decisions remain representative of a production system.
+
+---
+
+# Engineering Decisions
+
+These are the architectural choices I would expect to discuss during a design review.
+
+### Clean Architecture
+
+Each module is divided into:
+
+- Domain
+- Application
+- Infrastructure
+- Interface
+
+This keeps business logic isolated from NestJS, Prisma, and HTTP concerns.
+
+---
+
+### Event-Driven Modules
+
+Leads and Applications communicate using domain events instead of direct service calls.
+
+Benefits:
+
+- Loose coupling
+- Independent evolution
+- Easier testing
+- Better scalability
+
+---
+
+### Multi-Tenant Isolation
+
+Tenant isolation is enforced through three independent layers:
+
+- JWT tenant claims
+- AsyncLocalStorage request context
+- Repository-level tenant filtering
+
+This defense-in-depth approach reduces the risk of cross-tenant data leaks.
+
+---
+
+### Strategy Pattern
+
+Workflow validation is implemented using the Strategy Pattern instead of large conditional blocks.
+
+Each business rule becomes an independent strategy, making workflows easier to extend.
+
+---
+
+### Frontend Responsibility
+
+The frontend intentionally contains no business logic.
+
+It exists only to:
+
+- Authenticate users
+- Display data
+- Call backend APIs
+
+All validation and business rules remain on the server.
+
+---
+
+## Project Structure
+
+```
+merchant-cash-advance-crm/
+
+backend/
+    src/
+    prisma/
+    test/
+
+frontend/
+    src/
+
+docker-compose.yml
+```
+
+---
+
+## Running the Project
 
 ```bash
 docker compose up --build
-```
 
-- API: **http://localhost:3000/api/v1** · Swagger: **http://localhost:3000/docs**
-- Frontend: **http://localhost:3001**
-
-Seed demo data (two isolated tenants, users, roles):
-
-```bash
 docker compose exec api npx prisma db seed
 ```
 
-Then open **http://localhost:3001/login** — seeded logins (password
-`Password123!` for all):
+### Services
 
-| Tenant slug | Admin | ISO | Underwriter |
-|---|---|---|---|
-| `capital-partners` | admin@capital-partners.com | iso@capital-partners.com | underwriter@capital-partners.com |
-| `fundwise` | admin@fundwise.com | iso@fundwise.com | underwriter@fundwise.com |
+Backend API
 
-Walk the demo: log in as the **ISO**, create a lead, push it through
-`CONTACTED → QUALIFIED → CONVERTED` — an Application is auto-created via a
-domain event. Log in as the **underwriter**, attach a document, submit for
-review, and approve/decline it. Log in as **admin** to view the full audit
-trail at `/audit-log`.
-
----
-
-## Run backend and frontend independently
-
-Each half is a standalone project with its own README, dependencies, and
-Docker build — useful if you only want to run/inspect one side, or point
-the frontend at a differently-hosted API.
-
-```bash
-# Backend
-cd backend && cp .env.example .env
-docker compose -f docker-compose.dev.yml up -d   # Postgres only
-npm install && npx prisma migrate dev && npx prisma db seed
-npm run start:dev                                 # http://localhost:3000
-
-# Frontend (separate terminal)
-cd frontend && cp .env.example .env
-npm install
-npm run dev                                        # http://localhost:3001
+```
+http://localhost:3000/api/v1
 ```
 
-See [`backend/README.md`](backend/README.md) and
-[`frontend/README.md`](frontend/README.md) for full details, testing
-instructions, and API reference.
+Swagger
+
+```
+http://localhost:3000/docs
+```
+
+Frontend
+
+```
+http://localhost:3001
+```
 
 ---
 
-## Why split this way
+## Testing
 
-The backend is the substantive engineering demonstration — Clean
-Architecture, DDD aggregates, the Strategy-pattern workflow engine,
-event-driven module boundaries, multi-tenant isolation (see
-[`backend/docs/ARCHITECTURE.md`](backend/docs/ARCHITECTURE.md) for
-diagrams). The frontend is deliberately thin: it's a typed API client with
-just enough UI to exercise every backend capability end-to-end (auth, the
-lead pipeline, the application workflow, the audit trail) — it holds no
-business rules of its own, and re-validates nothing the backend already
-guards. That boundary is itself the point: swap the frontend for a mobile
-app or another team's SPA and the backend doesn't change.
+```bash
+npm test
+
+npm run test:e2e
+
+npm run test:cov
+```
+
+The domain layer is tested independently from HTTP, Prisma, and NestJS, allowing business rules to be validated without infrastructure dependencies.
+
+---
+
+## Trade-offs
+
+To keep the project portfolio-focused, several production concerns were intentionally omitted:
+
+- Proprietary underwriting logic
+- Commission calculations
+- Funding integrations
+- Syndication engine
+- External payment integrations
+
+The architecture has been preserved so these capabilities could be introduced without changing the overall design.
+
+---
+
+## Future Improvements
+
+- Redis caching
+- Background job processing
+- CQRS
+- Event sourcing
+- Distributed messaging
+- Observability (OpenTelemetry)
+- Horizontal scaling
+
+---
 
 ## License
 
-MIT — built as a portfolio/demonstration project.
+MIT
