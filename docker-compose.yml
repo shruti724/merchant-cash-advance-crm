@@ -1,3 +1,5 @@
+# One-command full-stack run: Postgres + NestJS API + Next.js frontend.
+#   docker compose up --build
 services:
   postgres:
     image: postgres:16-alpine
@@ -18,7 +20,7 @@ services:
 
   api:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
@@ -35,6 +37,18 @@ services:
     ports:
       - "3000:3000"
     command: sh -c "npx prisma migrate deploy && node dist/main.js"
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3000/api/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3001:3001"
 
 volumes:
   pgdata:
